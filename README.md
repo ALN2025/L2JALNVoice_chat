@@ -1,184 +1,327 @@
-# L2Voice-Chat
+<div align="center">
 
-Voice chat in-game para servidores privados de Lineage II. Três canais
-— **Proximidade** (3D posicional), **Party**, **Clan/Ally** —
-integrados ao cliente do L2 via uma DLL side-loaded, mais um pequeno
-servidor Go de relay e uma bridge Java para game servers L2J.
+# L2Voice × L2JALN
 
-**🇺🇸 English version:** [README.md](README.md)
+### VoIP in-game para Lineage 2 — proximidade, party, clan e ally
 
----
+**Overlay no cliente · sem browser · sem HTML como interface principal**
 
-## ⚠️ Aviso legal
+<br>
 
-Este projeto **não é afiliado, endossado nem patrocinado pela
-NCSoft**. "Lineage II" é marca registrada da NCSoft Corporation.
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/Platform-Windows-0078D6?logo=windows&logoColor=white)]()
+[![Client](https://img.shields.io/badge/Client-Interlude-8B4513)]()
+[![Core](https://img.shields.io/badge/Core-L2JALN%20aCis%20382-2E86AB)]()
+[![Base](https://img.shields.io/badge/Base-DwBryel%20L2Voice--Chat-purple)](https://github.com/luannbr/L2Voice-Chat)
+[![Free](https://img.shields.io/badge/Release-Gratuita-success)]()
 
-Este software se destina **exclusivamente a uso em servidores
-privados** que você opere ou esteja autorizado a participar. Usar em
-servidores oficiais da NCSoft pode violar os Termos de Serviço deles.
-Os autores não se responsabilizam por contas, personagens ou ações de
-terceiros usando este software.
+<br>
 
-O repositório **não contém assets do jogo protegidos por copyright** —
-as texturas de UI referenciadas pela flag opcional `VOICE_L2_THEME`
-não são distribuídas e devem ser fornecidas pelo próprio usuário a
-partir de um cliente que ele possua.
+[Início rápido](#-início-rápido) ·
+[Arquitetura](#-arquitetura) ·
+[Cliente Engine.dll](#-cliente-patch-no-enginedll) ·
+[Créditos](#-créditos) ·
+[Docs PT-BR](README.pt-BR.md)
 
-Use por sua conta e risco.
+</div>
 
 ---
 
-## Visão geral
+## Sobre
 
-Pipeline em resumo:
+**L2Voice** traz chat de voz **dentro do jogo**: ícone de microfone, ping, painel `l2voice [connected]` e canais por distância e grupo.
+
+Este repositório é uma **adaptação gratuita** do material **L2Voice-Chat** ([**DwBryel**](https://github.com/luannbr/L2Voice-Chat)), originalmente voltado ao **Lineage II Essence** (pack **Samurai**), integrada no fork **L2JALN aCis 382** (**Interlude**, `net.sf.l2j`).
+
+> Não é o repositório oficial do DwBryel — é um fork comunitário com **créditos preservados**. Ver [CREDITS.md](CREDITS.md).
+
+---
+
+## Destaques
+
+| | |
+|:---:|:---|
+| 🎙️ | Voz **3D por proximidade** (alcance configurável) |
+| 👥 | Canais **Party**, **Clan** e **Ally** com PTT |
+| 🖥️ | UI em **C++ / ImGui** (`l2voice.dll`) — não é página web |
+| ☕ | **Game Server** integrado via bridge Java + Redis |
+| 🚀 | **Go** voice-server (UDP + WebSocket) |
+| 🆓 | **Open source** — licença MIT do projeto base |
+
+---
+
+## Créditos
+
+<table>
+<tr>
+<td width="120" align="center"><strong>Autor base</strong></td>
+<td>
+
+**[DwBryel](https://github.com/luannbr/L2Voice-Chat)** — criou o **L2Voice-Chat** (DLL, voice-server, bridge, design).  
+Arquivos originais para **Essence / Samurai**.
+
+</td>
+</tr>
+<tr>
+<td align="center"><strong>Este fork</strong></td>
+<td>
+
+**L2JALN aCis 382** — integração Java, `l2jalnvoice.properties`, bridge **aCis** (`L2WorldRef`), build `ant jar-packbase`, docs PT, release [RELEASE-L2JALN/](RELEASE-L2JALN/).
+
+</td>
+</tr>
+</table>
+
+---
+
+## Arquitetura
+
+```mermaid
+flowchart LR
+    subgraph Cliente["Cliente L2 (Interlude)"]
+        DLL["l2voice.dll"]
+        INI["voice.ini"]
+        ENG["Engine.dll\n(IAT patch)"]
+    end
+
+    subgraph VPS["Servidor"]
+        VS["voice-server\nGo :17666/:17667"]
+        REDIS[(Redis / Memurai)]
+        GS["Game Server\nl2jserver.jar"]
+        BR["l2voice-bridge\nJAR"]
+    end
+
+    ENG --> DLL
+    DLL <-->|"WS + UDP"| VS
+    BR <-->|"HTTP / WS"| VS
+    GS --> BR
+    BR --> REDIS
+    VS --> REDIS
+```
+
+| Porta | Serviço |
+|------:|---------|
+| **17666** | UDP — áudio Opus |
+| **17667** | WebSocket — controlo / auth |
+| **17668** | HTTP — bridge GS ↔ voice-server |
+| **6379** | Redis / Memurai |
+
+---
+
+## Estrutura do repositório
 
 ```
-┌────────────────────┐         ┌──────────────────────┐         ┌──────────────┐
-│  Cliente L2 + DLL  │◄───────►│  voice-server (Go)   │◄───────►│  L2J bridge  │
-│  l2voice.dll       │  UDP    │  SFU + mix espacial  │   WS    │  (Java 17)   │
-│  (C++17, Win32)    │  áudio  │  :17666 udp          │ eventos │  Maven mod   │
-│                    │  WS     │  :17667 ws           │ + RPC   │              │
-│                    │  ctrl   │                      │         │              │
-└────────────────────┘         └──────────────────────┘         └──────────────┘
+mods/voip/
+├── client/              # l2voice.dll (C++, CMake, Win32)
+├── voice-service/       # voice-server (Go)
+├── l2j-bridge/         # JAR Maven para o GameServer
+├── RELEASE-L2JALN/     # Pacote deploy (system + gameserver + diff)
+│   ├── system/          # voice.ini, PATCH-ENGINE.txt
+│   ├── gameserver/      # l2jalnvoice.properties, HTML
+│   └── java/            # Lista do diff no core
+├── SUBIR/               # Deploy alternativo (legado)
+├── docs/                # Build, uso, fórum L2JBrasil
+├── CREDITS.md
+└── CHANGELOG-L2JALN.md
 ```
 
-- **DLL do cliente** — captura via WASAPI, roda AEC (Speex DSP) +
-  NS (RNNoise) + AGC + HPF, codifica Opus, envia por UDP. Overlay
-  ImGui pros controles de canal/PTT/volume.
-- **voice-server** — binário Go único. Roteamento autoritativo, cálculo
-  de proximidade, mixdown por canal. Plano de controle WebSocket;
-  plano de áudio UDP.
-- **l2j-bridge** — módulo Maven plugado em um GS L2J. Resolve a
-  identidade do player via snapshot de portas TCP, distribui eventos
-  party/clan/ally pro voice-server e responde queries RPC whoami/name.
+---
 
-Os três componentes conversam por protocolos documentados — veja
-[`docs/protocol.md`](docs/protocol.md) pro formato wire.
+## Início rápido
 
-## Features
+### Pré-requisitos
 
-- **Três canais de voz.** Proximidade (posicional), Party (grupo
-  fechado), Clan/Ally (global). Prioridade do PTT: party > clan >
-  ally > proximidade.
-- **Cadeia completa de processamento de áudio.** AEC → HPF → NS →
-  AGC. Corta eco em setups dual-PC e ruído de teclado/mouse durante
-  raids.
-- **Sem protocolo de identidade no cliente.** A DLL não carrega
-  token. A identidade é resolvida no server-side por matching das
-  portas TCP de origem da DLL contra os sockets aceitos pelo GS —
-  funciona com qualquer fork L2J sem precisar de hooks do server
-  além do módulo bridge.
-- **Pronto pra multi-VPS.** A bridge distribui eventos pra N
-  voice-servers em paralelo; clientes conectam no mais próximo via
-  URL.
-- **Zero GPL no runtime.** Tudo ships sob licenças permissivas
-  (MIT/BSD), incluindo as deps nativas bundle.
+| Ferramenta | Uso |
+|------------|-----|
+| **Visual Studio 2022** + CMake + Git | Compilar `l2voice.dll` (Win32) |
+| **Go 1.22+** | `voice-server` |
+| **JDK 11+** + **Maven** + **Ant** | Bridge + `l2jserver.jar` |
+| **Memurai** ou **Redis** | Estado / posições |
+| **Stud_PE** ou **CFF Explorer** | Patch `Engine.dll` |
+| **DbgView** | Validar injeção da DLL |
 
-## Stack tecnológica
-
-| Componente | Biblioteca | Licença |
-|------------|------------|---------|
-| Captura/playback | [miniaudio](https://github.com/mackron/miniaudio) | MIT/Unlicense |
-| Codec Opus | [libopus](https://opus-codec.org/) | BSD |
-| Cancelamento de eco | [Speex DSP](https://github.com/xiph/speexdsp) | BSD |
-| Supressão de ruído | [RNNoise](https://github.com/xiph/rnnoise) (fork cpuimage p/ MSVC) | BSD |
-| WebSocket | [IXWebSocket](https://github.com/machinezone/IXWebSocket) | BSD |
-| Hooking | [MinHook](https://github.com/TsudaKageyu/minhook) | BSD-2-Clause |
-| Overlay | [Dear ImGui](https://github.com/ocornut/imgui) | MIT |
-| voice-server | gorilla/websocket, redis/go-redis, stdlib net | MIT/BSD |
-| l2j-bridge | Jedis (cliente Redis) | MIT |
-
-## Quick start
-
-Se você quer só rodar localmente:
+### Servidor (3 passos)
 
 ```bash
-# 1. Buildar o voice-server (precisa Go 1.22+)
-cd voice-service && go mod tidy && go build -o voice-server.exe ./cmd/voice-server
-./voice-server.exe -udp :17666 -ws :17667
+# 1 — Bridge
+mvn -f l2j-bridge/pom.xml package
 
-# 2. Buildar a DLL (precisa VS2022 + CMake 3.20+)
-cd client
-cmake -S . -B build -G "Visual Studio 17 2022" -A Win32
-cmake --build build --config Release
-# → client/build/Release/l2voice.dll
+# 2 — Game Server (no monorepo L2JALN)
+ant jar-packbase
 
-# 3. Colocar a DLL ao lado do cliente L2 + criar voice.ini
-#    (veja docs/USAGE.pt-BR.md pro voice.ini completo)
-
-# 4. Buildar o JAR da bridge L2J (precisa JDK 17 + Maven + JARs do seu server)
-cd l2j-bridge && mvn package
+# 3 — Voice-server
+cd voice-service && go build -o voice-server.exe ./cmd/voice-server
 ```
 
-Guias passo-a-passo completos:
+**Arranque:** Login Server → `voice-server` → Game Server  
 
-- 🇧🇷 [**docs/BUILDING.pt-BR.md**](docs/BUILDING.pt-BR.md) — compilar os três componentes
-- 🇧🇷 [**docs/USAGE.pt-BR.md**](docs/USAGE.pt-BR.md) — instalar, configurar, operar
-- 🇺🇸 [**docs/BUILDING.md**](docs/BUILDING.md) — build guide (EN)
-- 🇺🇸 [**docs/USAGE.md**](docs/USAGE.md) — usage guide (EN)
+Log esperado no GS:
 
-## Compatibilidade
-
-| Cliente L2 | Status |
-|------------|--------|
-| Essence 542 SamuraiCrow (EU) | ✅ verificado |
-| Outras builds Essence | ⚠️ provável — offsets do engine podem mudar |
-| Interlude | ⚠️ DLL injeta, captura de nome limitada (ver notas) |
-| Outros chronicles | ❌ não testado |
-
-| Fork L2J | Status |
-|----------|--------|
-| l2emuproject Essence 542 | ✅ verificado |
-| Outros forks L2J Essence | ⚠️ bridge precisa adaptação mínima de API |
-| L2J mainstream / aCis / etc. | ⚠️ bridge precisa port da API L2World |
-
-## Estrutura do projeto
-
-```
-.
-├── LICENSE                  MIT
-├── README.md                este arquivo em inglês
-├── README.pt-BR.md          versão em português
-├── docs/
-│   ├── protocol.md          formato wire (áudio UDP + WS controle + RPC)
-│   ├── BUILDING.md          guia de build (EN)
-│   ├── BUILDING.pt-BR.md    guia de compilação
-│   ├── USAGE.md             guia de uso (EN)
-│   ├── USAGE.pt-BR.md       guia de uso
-│   └── DESIGN.pt-BR.md      brief de design original (português)
-├── client/                  l2voice.dll (C++17, Win32, MSVC)
-│   ├── CMakeLists.txt
-│   ├── dllmain.cpp
-│   └── voice/               capture/playback/codec/net/overlay/apm
-├── voice-service/           voice-server (Go 1.22+)
-│   ├── cmd/voice-server/
-│   └── internal/
-└── l2j-bridge/              módulo Maven (JDK 17)
-    └── src/main/java/com/luannbr/l2voice/bridge/
+```text
+L2JALN Voice bridge iniciada (mods/voip) — Dwbryel-L2Voice
+voice-link connected
 ```
 
-## Status
+Config: `gameserver/config/custom/l2jalnvoice.properties` — template em [RELEASE-L2JALN/gameserver/](RELEASE-L2JALN/gameserver/).
 
-| Fase | Descrição | Status |
-|------|-----------|--------|
-| 1 | Monorepo + doc de protocolo | ✅ |
-| 2 | Voz por proximidade na DLL | ✅ |
-| 3 | voice-service Go (proximidade + grupos) | ✅ |
-| 4 | Bridge L2J (identidade, eventos, RPC) | ✅ |
-| 5 | Cadeia de processamento (AEC + NS + AGC) | ✅ |
-| 6 | Clan voice com modos operacionais | ✅ MVP |
-| — | Casos especiais Olympiad / siege / multibox | ⏳ em progresso |
+### Cliente (4 passos)
 
-## Contribuindo
+```bash
+# 1 — Compilar DLL (no monorepo)
+pack base/compilar-voip/01-compilar-l2voice-dll.bat
+```
 
-Issues e PRs bem-vindos. Antes de abrir um PR grande, abra uma issue
-pra discutir o escopo. O codebase mistura comentários em inglês e
-português — inglês é preferido pra código novo.
+2. Copiar para `system\` do L2: **`l2voice.dll`** + **`voice.ini`**  
+3. **Patch IAT** no `Engine.dll` → ver [RELEASE-L2JALN/system/PATCH-ENGINE.txt](RELEASE-L2JALN/system/PATCH-ENGINE.txt)  
+4. Abrir o jogo — DbgView deve mostrar `[l2voice] DLL_PROCESS_ATTACH`
+
+<details>
+<summary><strong>voice.ini mínimo (teste local)</strong></summary>
+
+```ini
+[voice]
+enabled = 1
+auto_connect = 1
+ws_url = ws://127.0.0.1:17667/ws
+require_focus = 0
+always_on = 1
+```
+
+</details>
+
+---
+
+## Cliente: patch no `Engine.dll`
+
+> **Copiar a DLL para `system\` não basta.** O Windows só carrega `l2voice.dll` se o **`Engine.dll`** a importar (IAT).
+
+No **Essence (Samurai)** o patch costuma vir pronto. No **Interlude** usamos **Stud_PE**:
+
+```
+Backup Engine.dll → Engine.dll.bak
+Stud_PE → Functions → Add Import
+  DLL:     l2voice.dll
+  Export:  L2Voice_Init
+Save → DbgView → [l2voice] DLL_PROCESS_ATTACH
+```
+
+| Distribuímos | Não distribuímos |
+|:------------:|:----------------:|
+| `l2voice.dll` (build) | `Engine.dll` patchado |
+| `voice.ini` | Cliente L2 oficial |
+| [PATCH-ENGINE.txt](RELEASE-L2JALN/system/PATCH-ENGINE.txt) | |
+
+Motivo: **copyright NCSoft** + revisões diferentes de client. Cada admin patcha o **seu** `Engine.dll` (~2 min).
+
+---
+
+## No jogo
+
+| Tecla | Função |
+|:-----:|--------|
+| **INSERT** | Abrir / fechar painel |
+| **H** | Proximidade |
+| **B** | Party |
+| **N** | Clan |
+| **M** | Ally |
+
+Comando de ajuda (não liga o mic): `.l2jalnvoiced` · `.l2jalnvoice`
+
+**Sozinho no mapa:** `(no one nearby)` e `neighbors=0` no log são **normais** — teste com **2ª conta** perto ou em party.
+
+---
+
+## Diff Java (core L2JALN)
+
+Ficheiros alterados no fork — lista completa em [RELEASE-L2JALN/java/LEIAME-DIFF.txt](RELEASE-L2JALN/java/LEIAME-DIFF.txt).
+
+| Tipo | Ficheiros |
+|------|-----------|
+| **Novos** | `L2VoiceBridgeLoader`, `VoicedL2JalnVoice`, `VoiceTeam` |
+| **Alterados** | `GameServer`, `EnterWorld`, `L2PcInstance`, `L2JALNMods`, … |
+| **Bridge** | `mods/voip/l2j-bridge` — fix `L2WorldRef` para **aCis** |
+
+Flag do mod: `L2JALNMods.l2jaln_VOIP = true`
+
+---
+
+## Troubleshooting
+
+<details>
+<summary><strong>DbgView vazio — sem [l2voice]</strong></summary>
+
+DLL **não injetada**. Refazer patch IAT no `Engine.dll` do **teu** client.
+
+</details>
+
+<details>
+<summary><strong>Painel nunca aparece / sem auth</strong></summary>
+
+Verificar: Memurai/Redis, `voice-server`, bridge no GS, `l2jalnvoice.enabled=true`.
+
+</details>
+
+<details>
+<summary><strong>Ouço-me no fone mas ninguém me ouve</strong></summary>
+
+Pode ser monitor Windows do mic. Para testar voz: **2 clientes**, `multibox-mute=false` no voice-server (já no bat local do pack).
+
+</details>
+
+<details>
+<summary><strong>Ícone não fica verde em cima da cabeça</strong></summary>
+
+O indicador principal é o **ícone + PING** no canto e **transmit active** no painel. Lista verde = **outros jogadores** a falar.
+
+</details>
+
+---
+
+## Documentação
+
+| Documento | Conteúdo |
+|-----------|----------|
+| [README.pt-BR.md](README.pt-BR.md) | Documentação técnica completa |
+| [INTEGRACAO-L2JALN.md](INTEGRACAO-L2JALN.md) | Integração GameServer |
+| [docs/BUILDING.pt-BR.md](docs/BUILDING.pt-BR.md) | Compilar os 3 componentes |
+| [docs/USAGE.pt-BR.md](docs/USAGE.pt-BR.md) | Uso e troubleshooting |
+| [docs/FORUM-L2JBRASIL.txt](docs/FORUM-L2JBRASIL.txt) | Post BBCode para o fórum |
+| [CHANGELOG-L2JALN.md](CHANGELOG-L2JALN.md) | Histórico deste fork |
+
+---
+
+## Essence vs L2JALN (Interlude)
+
+| | Essence (DwBryel) | Este fork |
+|---|-------------------|-----------|
+| Client | Patch habitual | **Stud_PE** no `Engine.dll` |
+| GS API | Essence 542 | **aCis 382** `net.sf.l2j` |
+| Config | `l2voice.properties` | **`l2jalnvoice.properties`** |
+| Build | Variável | **`ant jar-packbase`** |
+
+---
+
+## Aviso legal
+
+**Lineage II** é marca registada da **NCSoft Corporation**. Este projeto **não é afiliado** à NCSoft.
+
+Destinado exclusivamente a **servidores privados** autorizados. Não distribui assets protegidos do jogo.
+
+---
 
 ## Licença
 
-MIT — veja [LICENSE](LICENSE).
+Projeto base **MIT** — [LICENSE](LICENSE).  
+Mantém os créditos a **[DwBryel / L2Voice-Chat](https://github.com/luannbr/L2Voice-Chat)** ao redistribuir.
 
-Dependências bundle mantêm suas respectivas licenças (todas
-permissivas: MIT, BSD, BSD-2-Clause). Sem código GPL no runtime.
+---
+
+<div align="center">
+
+**Se este projeto te poupou semanas de integração, considera dar star no repo e mencionar o DwBryel no teu servidor.**
+
+<br>
+
+Feito com adaptação para a comunidade **L2J** · Base **[DwBryel](https://github.com/luannbr/L2Voice-Chat)** · Fork **L2JALN aCis 382**
+
+</div>
